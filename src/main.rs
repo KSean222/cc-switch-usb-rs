@@ -1,14 +1,12 @@
 use std::time::Duration;
 
-
 fn main() {
     loop {
         match SwitchConnection::try_connect() {
             Ok(mut conn) => {
                 println!("Successfully connected to the switch!");
                 let data = b"getMainNsoBase";
-                conn.write_all(&(data.len() as u32 + 2).to_le_bytes())
-                    .unwrap();
+                conn.write_all(&(data.len() as u32).to_be_bytes()).unwrap();
                 conn.write_all(data).unwrap();
                 std::thread::sleep(Duration::from_secs(1));
                 let mut len = [0u8; 4];
