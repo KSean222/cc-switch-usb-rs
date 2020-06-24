@@ -1,22 +1,102 @@
+use libtetris::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::time::Duration;
 
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "command", content = "args")]
+enum Command {
+    Launch {
+        options: cold_clear::Options,
+        evaluator: cold_clear::evaluation::Standard,
+    },
+    Drop {
+        handle: u32,
+    },
+    RequestNextMove {
+        handle: u32,
+        incoming: u32,
+    },
+    PollNextMove {
+        handle: u32,
+    },
+    BlockNextMove {
+        handle: u32,
+    },
+    AddNextPiece {
+        handle: u32,
+        piece: libtetris::Piece,
+    },
+    DefaultOptions,
+    DefaultEvaluator,
+}
+
+#[derive(Serialize, Deserialize)]
+enum BotPollState {
+    Waiting,
+    Dead,
+}
+
 fn main() {
+    fn command(conn: &mut SwitchConnection) -> Command {
+        let mut len = [0; 4];
+        conn.read_all(&mut len).unwrap();
+        let len = u32::from_le_bytes(len) as usize;
+        let mut buf = vec![0; len];
+        conn.read_all(&mut buf).unwrap();
+        serde_cbor::from_slice(&buf).unwrap()
+    }
+    fn result(conn: &mut SwitchConnection, msg: &impl Serialize) {
+        let buf = serde_cbor::to_vec(msg).unwrap();
+        conn.write_all(&(buf.len() as u32).to_be_bytes()).unwrap();
+        conn.write_all(&buf).unwrap();
+    }
     loop {
         match SwitchConnection::try_connect() {
             Ok(mut conn) => {
                 println!("Successfully connected to the switch!");
-                let data = b"getMainNsoBase";
-                conn.write_all(&(data.len() as u32).to_be_bytes()).unwrap();
-                conn.write_all(data).unwrap();
-                std::thread::sleep(Duration::from_secs(1));
-                let mut len = [0u8; 4];
-                conn.read_all(&mut len).unwrap();
-                let len = u32::from_le_bytes(len) as usize;
-                let mut data = vec![0; len];
-                conn.read_all(&mut data).unwrap();
-                println!("Data length: {}", len);
-                println!("Received: {:?}", data);
-                break;
+                let mut handle_counter: u32 = 0;
+                let mut handles = HashMap::new();
+                loop {
+                    match command(&mut conn) {
+                        Command::Launch { options, evaluator } => {
+                            let interface =
+                                cold_clear::Interface::launch(Board::new(), options, evaluator);
+                            handle_counter = handle_counter.wrapping_add(1);
+                            handles.insert(handle_counter, interface);
+                            result(&mut conn, &handle_counter);
+                        }
+                        Command::Drop { handle } => {
+                            handles.remove(&handle);
+                        }
+                        Command::RequestNextMove { handle, incoming } => {
+                            handles.get(&handle).unwrap().request_next_move(incoming);
+                        }
+                        Command::PollNextMove { handle } => {
+                            result(
+                                &mut conn,
+                                &handles.get(&handle).unwrap().poll_next_move().map_err(
+                                    |e| match e {
+                                        cold_clear::BotPollState::Waiting => BotPollState::Waiting,
+                                        cold_clear::BotPollState::Dead => BotPollState::Dead,
+                                    },
+                                ),
+                            );
+                        }
+                        Command::BlockNextMove { handle } => {
+                            result(&mut conn, &handles.get(&handle).unwrap().block_next_move());
+                        }
+                        Command::AddNextPiece { handle, piece } => {
+                            handles.get(&handle).unwrap().add_next_piece(piece);
+                        }
+                        Command::DefaultOptions => {
+                            result(&mut conn, &cold_clear::Options::default());
+                        }
+                        Command::DefaultEvaluator => {
+                            result(&mut conn, &cold_clear::evaluation::Standard::default());
+                        }
+                    }
+                }
             }
             Err(err) => {
                 println!("Error: {:?}", err);
@@ -110,7 +190,11 @@ impl SwitchConnection {
     pub fn read_all(&mut self, buf: &mut [u8]) -> Result<usize, (usize, rusb::Error)> {
         let mut read: usize = 0;
         while read < buf.len() {
-            read += self.read(&mut buf[read..]).map_err(|e| (read, e))?;
+            match self.read(&mut buf[read..]) {
+                Ok(bytes) => read += bytes,
+                Err(rusb::Error::Timeout) => {}
+                Err(err) => return Err((read, err)),
+            }
         }
         Ok(read)
     }
@@ -121,7 +205,11 @@ impl SwitchConnection {
     pub fn write_all(&mut self, buf: &[u8]) -> Result<usize, (usize, rusb::Error)> {
         let mut written: usize = 0;
         while written < buf.len() {
-            written += self.write(&buf[written..]).map_err(|e| (written, e))?;
+            match self.write(&buf[written..]) {
+                Ok(bytes) => written += bytes,
+                Err(rusb::Error::Timeout) => {}
+                Err(err) => return Err((written, err)),
+            }
         }
         Ok(written)
     }
