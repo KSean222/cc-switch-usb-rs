@@ -31,12 +31,6 @@ enum Command {
     DefaultEvaluator,
 }
 
-#[derive(Serialize, Deserialize)]
-enum BotPollState {
-    Waiting,
-    Dead,
-}
-
 fn main() {
     fn command(conn: &mut SwitchConnection) -> Command {
         let mut len = [0; 4];
@@ -73,15 +67,7 @@ fn main() {
                             handles.get(&handle).unwrap().request_next_move(incoming);
                         }
                         Command::PollNextMove { handle } => {
-                            result(
-                                &mut conn,
-                                &handles.get(&handle).unwrap().poll_next_move().map_err(
-                                    |e| match e {
-                                        cold_clear::BotPollState::Waiting => BotPollState::Waiting,
-                                        cold_clear::BotPollState::Dead => BotPollState::Dead,
-                                    },
-                                ),
-                            );
+                            result(&mut conn, &handles.get(&handle).unwrap().poll_next_move());
                         }
                         Command::BlockNextMove { handle } => {
                             result(&mut conn, &handles.get(&handle).unwrap().block_next_move());
