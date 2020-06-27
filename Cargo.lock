@@ -85,6 +85,7 @@ dependencies = [
  "libtetris",
  "rusb",
  "serde",
+ "serde-big-array 0.3.0",
  "serde_cbor",
 ]
 
@@ -111,7 +112,7 @@ dependencies = [
  "rand",
  "rayon",
  "serde",
- "serde-big-array",
+ "serde-big-array 0.2.0",
  "smallvec",
  "webutil",
 ]
@@ -717,6 +718,16 @@ name = "serde-big-array"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "883eee5198ea51720eab8be52a36cf6c0164ac90eea0ed95b649d5e35382404e"
+dependencies = [
+ "serde",
+ "serde_derive",
+]
+
+[[package]]
+name = "serde-big-array"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52309f7932ab258e58bcf73cc89037e307ffef3bcfb7ce7a246580c26f81dc55"
 dependencies = [
  "serde",
  "serde_derive",

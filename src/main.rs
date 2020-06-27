@@ -1,7 +1,10 @@
 use libtetris::*;
 use serde::{Deserialize, Serialize};
+use serde_big_array::big_array;
 use std::collections::HashMap;
 use std::time::Duration;
+
+big_array! { BigArray; }
 
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "command", content = "args")]
@@ -26,6 +29,13 @@ enum Command {
     AddNextPiece {
         handle: u32,
         piece: libtetris::Piece,
+    },
+    Reset {
+        handle: u32,
+        #[serde(with = "BigArray")]
+        field: [[bool; 10]; 40],
+        b2b_active: bool,
+        combo: u32,
     },
     DefaultOptions,
     DefaultEvaluator,
@@ -71,6 +81,17 @@ fn main() {
                         }
                         Command::BlockNextMove { handle } => {
                             result(&mut conn, &handles.get(&handle).unwrap().block_next_move());
+                        }
+                        Command::Reset {
+                            handle,
+                            field,
+                            b2b_active,
+                            combo,
+                        } => {
+                            handles
+                                .get(&handle)
+                                .unwrap()
+                                .reset(field, b2b_active, combo);
                         }
                         Command::AddNextPiece { handle, piece } => {
                             handles.get(&handle).unwrap().add_next_piece(piece);
